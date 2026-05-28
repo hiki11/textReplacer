@@ -5,7 +5,7 @@ from pathlib import Path
 import jieba  # 保持 jieba 导入用于分词
 # 导入我们拆分出的模块
 from text_processor.preprocessor import TextPreprocessor
-from text_processor.strategies import UnitStrategy, CountStrategy, HybridStrategy, SegmentationStrategy
+from text_processor.strategies import UnitStrategy, CountStrategy, SegmentationStrategy
 from config_manager import ConfigManager
 
 
@@ -21,9 +21,9 @@ class TextProcessorApp:
     def __init__(self, root):
         self.root = root
         self.preprocessor = TextPreprocessor()
-        # 默认使用 UnitStrategy，但运行时会根据配置更新
-        self.strategy = SegmentationStrategy.create("unit")
+        # 先加载配置，然后根据配置创建策略
         self._load_config()
+        self.strategy = SegmentationStrategy.create(self.strategy_type)
         self._create_widgets()
 
         # 初始化时尝试加载上次保存的敏感词表
@@ -40,6 +40,10 @@ class TextProcessorApp:
         self.use_custom_chars = ConfigManager.load_config("use_custom_chars", False)
         self.custom_remove_chars = ConfigManager.load_config("custom_remove_chars", "")
         self.custom_keep_chars = ConfigManager.load_config("custom_keep_chars", "")
+        self.remove_pinyin = ConfigManager.load_config("remove_pinyin", True)
+        self.remove_quotes = ConfigManager.load_config("remove_quotes", False)
+        self.split_dunhao = ConfigManager.load_config("split_dunhao", False)
+        self.abbreviate_countries = ConfigManager.load_config("abbreviate_countries", False)
 
     def _save_config(self):
         # ... (与原 main.py 代码相同) ...
@@ -52,6 +56,10 @@ class TextProcessorApp:
             ConfigManager.save_config("use_custom_chars", self.use_custom_chars_var.get())
             ConfigManager.save_config("custom_remove_chars", self.remove_chars_entry.get())
             ConfigManager.save_config("custom_keep_chars", self.keep_chars_entry.get())
+            ConfigManager.save_config("remove_pinyin", self.remove_pinyin_var.get())
+            ConfigManager.save_config("remove_quotes", self.remove_quotes_var.get())
+            ConfigManager.save_config("split_dunhao", self.split_dunhao_var.get())
+            ConfigManager.save_config("abbreviate_countries", self.abbreviate_countries_var.get())
             messagebox.showinfo("提示", "配置已保存！")
         except Exception as e:
             messagebox.showerror("错误", f"保存配置失败: {str(e)}")
@@ -69,7 +77,7 @@ class TextProcessorApp:
         # 策略选择
         ttk.Label(control_frame, text="断句策略:").grid(row=0, column=0, sticky="w")
         self.strategy_var = tk.StringVar(value=self.strategy_type)
-        strategies = [("智能单位", "unit"), ("固定词数", "count"), ("混合模式", "hybrid")]
+        strategies = [("最大单位", "unit"), ("固定词数", "count")]
         for col, (text, val) in enumerate(strategies, 1):
             rb = ttk.Radiobutton(control_frame, text=text, variable=self.strategy_var, value=val)
             rb.grid(row=0, column=col, padx=5)
@@ -111,6 +119,18 @@ class TextProcessorApp:
         self.preprocess_rules_label.grid(row=6, column=0, columnspan=2, sticky="w", pady=5)
         ttk.Button(control_frame, text="加载预处理规则", command=self._open_preprocess_rules_dialog).grid(row=6, column=2)
         ttk.Button(control_frame, text="保存预处理规则", command=self._save_preprocess_rules_dialog).grid(row=6, column=3)
+
+        self.remove_pinyin_var = tk.BooleanVar(value=self.remove_pinyin)
+        ttk.Checkbutton(control_frame, text="去除拼音（保留英文单词）", variable=self.remove_pinyin_var).grid(row=7, column=0, columnspan=4, sticky="w", pady=5)
+
+        self.remove_quotes_var = tk.BooleanVar(value=self.remove_quotes)
+        ttk.Checkbutton(control_frame, text="去除中文引号", variable=self.remove_quotes_var).grid(row=8, column=0, columnspan=4, sticky="w", pady=5)
+
+        self.split_dunhao_var = tk.BooleanVar(value=self.split_dunhao)
+        ttk.Checkbutton(control_frame, text="分割中文顿号（顿号→句号）", variable=self.split_dunhao_var).grid(row=9, column=0, columnspan=4, sticky="w", pady=5)
+
+        self.abbreviate_countries_var = tk.BooleanVar(value=self.abbreviate_countries)
+        ttk.Checkbutton(control_frame, text="和谐国家名称（美国→MG）", variable=self.abbreviate_countries_var).grid(row=10, column=0, columnspan=4, sticky="w", pady=5)
 
         # 文本区域
         text_frame = ttk.Frame(root)
@@ -226,6 +246,14 @@ class TextProcessorApp:
             self.preprocessor.use_custom_chars = self.use_custom_chars
             self.preprocessor.custom_remove_chars = self.custom_remove_chars
             self.preprocessor.custom_keep_chars = self.custom_keep_chars
+            self.remove_pinyin = self.remove_pinyin_var.get()
+            self.preprocessor.remove_pinyin = self.remove_pinyin
+            self.remove_quotes = self.remove_quotes_var.get()
+            self.preprocessor.remove_quotes = self.remove_quotes
+            self.split_dunhao = self.split_dunhao_var.get()
+            self.preprocessor.split_dunhao = self.split_dunhao
+            self.abbreviate_countries = self.abbreviate_countries_var.get()
+            self.preprocessor.abbreviate_countries = self.abbreviate_countries
             
         except ValueError:
             messagebox.showerror("错误", "最大单位和词数限制必须是有效的整数。")
@@ -254,7 +282,10 @@ class TextProcessorApp:
             chunks = self.strategy.split(segments, **params)
 
             # 生成结果
-            result = "。".join(chunks).replace("。。", "。").rstrip('。') + "。"
+            result = "".join(chunks)
+            while '。。' in result:
+                result = result.replace('。。', '。')
+            result = result.rstrip('。') + '。'
 
             # 显示结果
             self.result_text.config(state="normal")

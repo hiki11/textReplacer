@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.trae/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test scripts
+test_*.py
+simple_test.py
